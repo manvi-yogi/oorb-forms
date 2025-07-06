@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import FormDashboard from './FormDashboard';
-import FormBuilder from './FormBuilder';
+import EnhancedFormBuilder from './EnhancedFormBuilder';
 import ResponseViewer from './ResponseViewer';
 import FormCreationModal from './FormCreationModal';
-import Sidebar from './Sidebar';
 import { formAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -21,6 +20,8 @@ const OorbFormsApp: React.FC = () => {
 
   const handleFormCreation = async (data: { title: string; description: string; folderId?: string }) => {
     try {
+      console.log('Creating form with data:', data);
+      
       const formData = {
         title: data.title,
         description: data.description,
@@ -30,57 +31,52 @@ const OorbFormsApp: React.FC = () => {
       };
       
       const response = await formAPI.createForm(formData);
+      console.log('Form created successfully:', response.data);
+      
       setCurrentFormId(response.data._id);
       setCurrentView('builder');
+      setShowFormCreationModal(false);
       toast.success('Form created successfully!');
-    } catch (error) {
-      toast.error('Failed to create form');
+    } catch (error: any) {
       console.error('Error creating form:', error);
+      toast.error(error.response?.data?.error || 'Failed to create form');
     }
   };
 
   const handleEditForm = (formId: string) => {
+    console.log('Editing form:', formId);
     setCurrentFormId(formId);
     setCurrentView('builder');
   };
 
   const handleViewResponses = (formId: string) => {
+    console.log('Viewing responses for form:', formId);
     setCurrentFormId(formId);
     setCurrentView('responses');
   };
 
   const handleBackToDashboard = () => {
+    console.log('Returning to dashboard');
     setCurrentView('dashboard');
     setCurrentFormId(null);
   };
 
   const renderCurrentView = () => {
+    console.log('Rendering view:', currentView, 'with formId:', currentFormId);
+    
     switch (currentView) {
       case 'dashboard':
         return (
-          <div className="flex min-h-screen bg-gray-50">
-            {/* Sidebar */}
-            <Sidebar
-              onCreateForm={handleCreateForm}
-              onEditForm={handleEditForm}
-              currentView={currentView}
-              onNavigate={setCurrentView}
-            />
-            
-            {/* Main Content */}
-            <div className="flex-1">
-              <FormDashboard 
-                onCreateForm={handleCreateForm}
-                onEditForm={handleEditForm}
-                onViewResponses={handleViewResponses}
-              />
-            </div>
-          </div>
+          <FormDashboard 
+            onCreateForm={handleCreateForm}
+            onEditForm={handleEditForm}
+            onViewResponses={handleViewResponses}
+          />
         );
       
       case 'builder':
         return (
-          <FormBuilder 
+          <EnhancedFormBuilder 
             formId={currentFormId || undefined}
             onBack={handleBackToDashboard}
           />
@@ -92,29 +88,27 @@ const OorbFormsApp: React.FC = () => {
             formId={currentFormId}
             onBack={handleBackToDashboard}
           />
-        ) : null;
+        ) : (
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-600">No form selected for viewing responses</p>
+              <button
+                onClick={handleBackToDashboard}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        );
       
       default:
         return (
-          <div className="flex min-h-screen bg-gray-50">
-            {/* Sidebar */}
-            <Sidebar
-              onCreateForm={handleCreateForm}
-              onEditForm={handleEditForm}
-              currentView={currentView}
-              onNavigate={setCurrentView}
-            />
-            
-            
-            {/* Main Content */}
-            <div className="flex-1">
-              <FormDashboard 
-                onCreateForm={handleCreateForm}
-                onEditForm={handleEditForm}
-                onViewResponses={handleViewResponses}
-              />
-            </div>
-          </div>
+          <FormDashboard 
+            onCreateForm={handleCreateForm}
+            onEditForm={handleEditForm}
+            onViewResponses={handleViewResponses}
+          />
         );
     }
   };

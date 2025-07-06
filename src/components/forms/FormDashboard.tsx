@@ -72,16 +72,40 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
   }, []);
 
   const loadData = async () => {
+    setLoading(true);
     try {
-      const [formsResponse, foldersResponse] = await Promise.all([
+      console.log('FormDashboard: Loading forms and folders...');
+      
+      const [formsResponse, foldersResponse] = await Promise.allSettled([
         formAPI.getForms(),
         folderAPI.getFolders()
       ]);
-      setForms(formsResponse.data);
-      setFolders(foldersResponse.data);
+
+      // Handle forms response
+      if (formsResponse.status === 'fulfilled') {
+        console.log('FormDashboard: Forms loaded successfully:', formsResponse.value.data.length, 'forms');
+        setForms(formsResponse.value.data || []);
+      } else {
+        console.error('FormDashboard: Failed to load forms:', formsResponse.reason);
+        toast.error('Failed to load forms');
+        setForms([]);
+      }
+
+      // Handle folders response
+      if (foldersResponse.status === 'fulfilled') {
+        console.log('FormDashboard: Folders loaded successfully:', foldersResponse.value.data.length, 'folders');
+        setFolders(foldersResponse.value.data || []);
+      } else {
+        console.error('FormDashboard: Failed to load folders:', foldersResponse.reason);
+        // Don't show error for folders as they're optional
+        setFolders([]);
+      }
+
     } catch (error) {
-      toast.error('Failed to load data');
-      console.error('Error loading data:', error);
+      console.error('FormDashboard: Unexpected error loading data:', error);
+      toast.error('Failed to load dashboard data');
+      setForms([]);
+      setFolders([]);
     } finally {
       setLoading(false);
     }
@@ -89,12 +113,13 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
 
   const createFolder = async (folderData: { name: string; description: string; color: string }) => {
     try {
+      console.log('FormDashboard: Creating folder:', folderData);
       const response = await folderAPI.createFolder(folderData);
       setFolders([response.data, ...folders]);
       toast.success('Folder created successfully');
-    } catch (error) {
-      toast.error('Failed to create folder');
-      console.error('Error creating folder:', error);
+    } catch (error: any) {
+      console.error('FormDashboard: Error creating folder:', error);
+      toast.error(error.response?.data?.error || 'Failed to create folder');
     }
   };
 
@@ -102,12 +127,13 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     if (!selectedFolder) return;
     
     try {
+      console.log('FormDashboard: Updating folder:', selectedFolder._id, folderData);
       const response = await folderAPI.updateFolder(selectedFolder._id, folderData);
       setFolders(folders.map(f => f._id === selectedFolder._id ? response.data : f));
       toast.success('Folder updated successfully');
-    } catch (error) {
-      toast.error('Failed to update folder');
-      console.error('Error updating folder:', error);
+    } catch (error: any) {
+      console.error('FormDashboard: Error updating folder:', error);
+      toast.error(error.response?.data?.error || 'Failed to update folder');
     }
   };
 
@@ -117,12 +143,13 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     }
 
     try {
+      console.log('FormDashboard: Deleting folder:', folderId);
       await folderAPI.deleteFolder(folderId);
       setFolders(folders.filter(f => f._id !== folderId));
       toast.success('Folder deleted successfully');
-    } catch (error) {
-      toast.error('Failed to delete folder');
-      console.error('Error deleting folder:', error);
+    } catch (error: any) {
+      console.error('FormDashboard: Error deleting folder:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete folder');
     }
   };
 
@@ -132,12 +159,13 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     }
 
     try {
+      console.log('FormDashboard: Deleting form:', formId);
       await formAPI.deleteForm(formId);
       setForms(forms.filter(form => form._id !== formId));
       toast.success('Form deleted successfully');
-    } catch (error) {
-      toast.error('Failed to delete form');
-      console.error('Error deleting form:', error);
+    } catch (error: any) {
+      console.error('FormDashboard: Error deleting form:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete form');
     }
   };
 
@@ -160,8 +188,8 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     folder.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalResponses = forms.reduce((sum, form) => sum + form.responses, 0);
-  const totalViews = forms.reduce((sum, form) => sum + form.views, 0);
+  const totalResponses = forms.reduce((sum, form) => sum + (form.responses || 0), 0);
+  const totalViews = forms.reduce((sum, form) => sum + (form.views || 0), 0);
   const activeForms = forms.filter(form => form.status === 'published').length;
 
   if (loading) {
@@ -182,21 +210,19 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
         <div className="px-6 py-6">
           <div className="flex items-center justify-between">
             <div>
+              <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+              <p className="text-gray-600">Manage your forms and view analytics</p>
             </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-className="pl-10 pr-4 py-2 border border-gray-300 rounded-3xl focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:min-w-md md:min-w-[500px] lg:min-w-[700px] bg-gray-50"
-                />
-              </div>
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                R
-              </div>
-
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search forms and folders..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:min-w-md md:min-w-[400px] lg:min-w-[500px] bg-gray-50"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -204,6 +230,7 @@ className="pl-10 pr-4 py-2 border border-gray-300 rounded-3xl focus:ring-2 focus
       <div className="px-6 py-8">
         {/* Create Form Options */}
         <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Create New Form</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl">
             {/* Blank Form */}
             <div 
@@ -401,10 +428,17 @@ className="pl-10 pr-4 py-2 border border-gray-300 rounded-3xl focus:ring-2 focus
                     {form.title}
                   </h3>
                   <div className="flex items-center space-x-2 text-xs text-gray-500 mb-2">
-                    <span>{form.responses} responses</span>
+                    <span>{form.responses || 0} responses</span>
                     <span>•</span>
-                    <span>{form.views} views</span>
+                    <span>{form.views || 0} views</span>
                   </div>
+                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                    form.status === 'published' ? 'bg-green-100 text-green-800' :
+                    form.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {form.status}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="flex items-center space-x-1">
@@ -450,14 +484,16 @@ className="pl-10 pr-4 py-2 border border-gray-300 rounded-3xl focus:ring-2 focus
           {filteredFolders.length === 0 && filteredStandaloneForms.length === 0 && (
             <div className="text-center py-16">
               <FileText className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No forms or folders found</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {forms.length === 0 ? 'No forms created yet' : 'No forms or folders found'}
+              </h3>
               <p className="text-gray-600 mb-6">
                 {searchTerm || filterStatus !== 'all' 
                   ? 'Try adjusting your search or filter criteria'
                   : 'Get started by creating your first form'
                 }
               </p>
-              {!searchTerm && filterStatus === 'all' && (
+              {!searchTerm && filterStatus === 'all' && forms.length === 0 && (
                 <button
                   onClick={onCreateForm}
                   className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
