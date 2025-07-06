@@ -1,35 +1,17 @@
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import Form from '../models/Form.js';
 import Response from '../models/Response.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
-
-// Middleware to authenticate JWT token
-async function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
-  try {
-    const user = jwt.verify(token, JWT_SECRET);
-    req.user = user;
-    next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
-  }
-}
 
 // Get all forms for authenticated user
 router.get('/', authenticateToken, async (req, res) => {
   try {
+    console.log('Forms route - Getting forms for user:', req.user._id);
+    
     const { limit, sort } = req.query;
-    let query = Form.find({ createdBy: req.user.userId });
+    let query = Form.find({ createdBy: req.user._id });
     
     if (sort) {
       query = query.sort({ [sort]: -1 });
@@ -42,8 +24,11 @@ router.get('/', authenticateToken, async (req, res) => {
     }
     
     const forms = await query.populate('createdBy', 'name email');
+    console.log('Forms route - Found', forms.length, 'forms');
+    
     res.json(forms);
   } catch (error) {
+    console.error('Forms route - Error getting forms:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -51,16 +36,22 @@ router.get('/', authenticateToken, async (req, res) => {
 // Get form by ID (only if user owns it)
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
+    console.log('Forms route - Getting form by ID:', req.params.id, 'for user:', req.user._id);
+    
     const form = await Form.findOne({ 
       _id: req.params.id, 
-      createdBy: req.user.userId 
+      createdBy: req.user._id 
     }).populate('createdBy', 'name email');
     
     if (!form) {
+      console.log('Forms route - Form not found or access denied');
       return res.status(404).json({ error: 'Form not found or access denied' });
     }
+    
+    console.log('Forms route - Form found:', form.title);
     res.json(form);
   } catch (error) {
+    console.error('Forms route - Error getting form:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -68,8 +59,11 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Get form by share URL (public - no authentication needed)
 router.get('/share/:shareUrl', async (req, res) => {
   try {
+    console.log('Forms route - Getting form by share URL:', req.params.shareUrl);
+    
     const form = await Form.findOne({ shareUrl: req.params.shareUrl });
     if (!form) {
+      console.log('Forms route - Form not found for share URL');
       return res.status(404).json({ error: 'Form not found' });
     }
     
@@ -77,8 +71,10 @@ router.get('/share/:shareUrl', async (req, res) => {
     form.views += 1;
     await form.save();
     
+    console.log('Forms route - Public form found:', form.title);
     res.json(form);
   } catch (error) {
+    console.error('Forms route - Error getting form by share URL:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -86,17 +82,22 @@ router.get('/share/:shareUrl', async (req, res) => {
 // Create new form
 router.post('/', authenticateToken, async (req, res) => {
   try {
+    console.log('Forms route - Creating form for user:', req.user._id, 'with data:', req.body);
+    
     const formData = {
       ...req.body,
-      createdBy: req.user.userId
+      createdBy: req.user._id
     };
     
     const form = new Form(formData);
     await form.save();
     
     const populatedForm = await Form.findById(form._id).populate('createdBy', 'name email');
+    console.log('Forms route - Form created successfully:', populatedForm._id);
+    
     res.status(201).json(populatedForm);
   } catch (error) {
+    console.error('Forms route - Error creating form:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -104,17 +105,23 @@ router.post('/', authenticateToken, async (req, res) => {
 // Update form (only if user owns it)
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
+    console.log('Forms route - Updating form:', req.params.id, 'for user:', req.user._id);
+    
     const form = await Form.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user.userId },
+      { _id: req.params.id, createdBy: req.user._id },
       { ...req.body, updatedAt: new Date() },
       { new: true, runValidators: true }
     ).populate('createdBy', 'name email');
     
     if (!form) {
+      console.log('Forms route - Form not found or access denied for update');
       return res.status(404).json({ error: 'Form not found or access denied' });
     }
+    
+    console.log('Forms route - Form updated successfully');
     res.json(form);
   } catch (error) {
+    console.error('Forms route - Error updating form:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -122,20 +129,25 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // Delete form (only if user owns it)
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
+    console.log('Forms route - Deleting form:', req.params.id, 'for user:', req.user._id);
+    
     const form = await Form.findOneAndDelete({ 
       _id: req.params.id, 
-      createdBy: req.user.userId 
+      createdBy: req.user._id 
     });
     
     if (!form) {
+      console.log('Forms route - Form not found or access denied for deletion');
       return res.status(404).json({ error: 'Form not found or access denied' });
     }
     
     // Also delete all responses for this form
     await Response.deleteMany({ formId: req.params.id });
     
+    console.log('Forms route - Form deleted successfully');
     res.json({ message: 'Form deleted successfully' });
   } catch (error) {
+    console.error('Forms route - Error deleting form:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -143,17 +155,23 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 // Publish form (only if user owns it)
 router.post('/:id/publish', authenticateToken, async (req, res) => {
   try {
+    console.log('Forms route - Publishing form:', req.params.id, 'for user:', req.user._id);
+    
     const form = await Form.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user.userId },
+      { _id: req.params.id, createdBy: req.user._id },
       { status: 'published', updatedAt: new Date() },
       { new: true }
     ).populate('createdBy', 'name email');
     
     if (!form) {
+      console.log('Forms route - Form not found or access denied for publishing');
       return res.status(404).json({ error: 'Form not found or access denied' });
     }
+    
+    console.log('Forms route - Form published successfully');
     res.json(form);
   } catch (error) {
+    console.error('Forms route - Error publishing form:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -161,12 +179,15 @@ router.post('/:id/publish', authenticateToken, async (req, res) => {
 // Get form analytics (only if user owns it)
 router.get('/:id/analytics', authenticateToken, async (req, res) => {
   try {
+    console.log('Forms route - Getting analytics for form:', req.params.id, 'for user:', req.user._id);
+    
     const form = await Form.findOne({ 
       _id: req.params.id, 
-      createdBy: req.user.userId 
+      createdBy: req.user._id 
     });
     
     if (!form) {
+      console.log('Forms route - Form not found or access denied for analytics');
       return res.status(404).json({ error: 'Form not found or access denied' });
     }
 
@@ -190,8 +211,10 @@ router.get('/:id/analytics', authenticateToken, async (req, res) => {
       averageCompletionTime: responses.reduce((acc, r) => acc + (r.completionTime || 0), 0) / totalResponses || 0
     };
 
+    console.log('Forms route - Analytics calculated successfully');
     res.json(analytics);
   } catch (error) {
+    console.error('Forms route - Error getting analytics:', error);
     res.status(500).json({ error: error.message });
   }
 });
