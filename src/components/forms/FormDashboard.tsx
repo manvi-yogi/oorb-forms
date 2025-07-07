@@ -16,6 +16,7 @@ import {
   Download,
   Send,
   Folder,
+  FolderOpen,
   FolderPlus,
   Settings,
   Menu,
@@ -25,7 +26,9 @@ import {
   User,
   LogOut,
   TrendingUp,
-  Activity
+  Activity,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { formAPI, exportAPI, folderAPI } from '../../services/api';
@@ -74,6 +77,7 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<FolderItem | null>(null);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadData();
@@ -182,6 +186,16 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     toast.success('Share link copied to clipboard!');
   };
 
+  const toggleFolder = (folderId: string) => {
+    const newExpanded = new Set(expandedFolders);
+    if (newExpanded.has(folderId)) {
+      newExpanded.delete(folderId);
+    } else {
+      newExpanded.add(folderId);
+    }
+    setExpandedFolders(newExpanded);
+  };
+
   const handleDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
 
@@ -192,10 +206,11 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
       return;
     }
 
+    const formId = draggableId.replace('form-', '');
+
     // If dropped on a folder
     if (destination.droppableId.startsWith('folder-')) {
       const folderId = destination.droppableId.replace('folder-', '');
-      const formId = draggableId.replace('form-', '');
 
       try {
         // Move form to folder
@@ -222,7 +237,6 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
 
     // If dropped on standalone area
     if (destination.droppableId === 'standalone-forms') {
-      const formId = draggableId.replace('form-', '');
       const form = forms.find(f => f._id === formId);
       
       if (form && form.folderId) {
@@ -268,9 +282,84 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     folder.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getFormsInFolder = (folderId: string) => {
+    return forms.filter(form => form.folderId === folderId).filter(form => {
+      const matchesSearch = form.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           form.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesFilter = filterStatus === 'all' || form.status === filterStatus;
+      return matchesSearch && matchesFilter;
+    });
+  };
+
   const totalResponses = forms.reduce((sum, form) => sum + (form.responses || 0), 0);
   const totalViews = forms.reduce((sum, form) => sum + (form.views || 0), 0);
   const activeForms = forms.filter(form => form.status === 'published').length;
+
+  const renderFormCard = (form: FormItem, index: number, isDragging = false) => (
+    <div
+      className={`bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-all cursor-pointer group ${
+        isDragging ? 'shadow-lg rotate-2' : ''
+      }`}
+      onClick={() => onEditForm(form._id)}
+    >
+      <div className="flex flex-col items-center text-center">
+        <div className="w-16 h-16 bg-blue-50 rounded-lg flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+          <FileText className="w-8 h-8 text-blue-600" />
+        </div>
+        <h3 className="font-medium text-gray-900 text-sm mb-2 truncate w-full">
+          {form.title}
+        </h3>
+        <div className="flex items-center space-x-2 text-xs text-gray-500 mb-2">
+          <span>{form.responses || 0} responses</span>
+          <span>•</span>
+          <span>{form.views || 0} views</span>
+        </div>
+        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+          form.status === 'published' ? 'bg-green-100 text-green-800' :
+          form.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
+          'bg-red-100 text-red-800'
+        }`}>
+          {form.status}
+        </span>
+      </div>
+      <div className="flex items-center justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewResponses(form._id);
+            }}
+            className="p-1 text-gray-400 hover:text-gray-600 rounded"
+            title="View responses"
+          >
+            <BarChart3 className="w-4 h-4" />
+          </button>
+          {form.status === 'published' && form.shareUrl && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                copyShareLink(form.shareUrl!);
+              }}
+              className="p-1 text-gray-400 hover:text-gray-600 rounded"
+              title="Copy share link"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            deleteForm(form._id);
+          }}
+          className="p-1 text-gray-400 hover:text-red-600 rounded"
+          title="Delete form"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -499,149 +588,153 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
               </div>
             </div>
 
-            {/* Forms Grid with Drag and Drop */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            {/* Forms and Folders */}
+            <div className="space-y-6">
               {/* Folders */}
-              {filteredFolders.map((folder) => (
-                <Droppable key={folder._id} droppableId={`folder-${folder._id}`}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className={`bg-white rounded-lg border-2 p-4 hover:shadow-md transition-all cursor-pointer group ${
-                        snapshot.isDraggingOver ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-                      }`}
-                    >
-                      <div className="flex flex-col items-center text-center">
-                        <div 
-                          className="w-16 h-16 rounded-lg flex items-center justify-center mb-3 group-hover:scale-105 transition-transform"
-                          style={{ backgroundColor: folder.color + '20' }}
+              {filteredFolders.map((folder) => {
+                const folderForms = getFormsInFolder(folder._id);
+                const isExpanded = expandedFolders.has(folder._id);
+                
+                return (
+                  <div key={folder._id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    {/* Folder Header */}
+                    <Droppable droppableId={`folder-${folder._id}`}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.droppableProps}
+                          className={`p-4 border-b border-gray-100 transition-colors ${
+                            snapshot.isDraggingOver ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'
+                          }`}
                         >
-                          <Folder 
-                            className="w-8 h-8" 
-                            style={{ color: folder.color }}
-                          />
-                        </div>
-                        <h3 className="font-medium text-gray-900 text-sm mb-1 truncate w-full">
-                          {folder.name}
-                        </h3>
-                        <p className="text-xs text-gray-500">
-                          {folder.formCount} forms
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-end mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedFolder(folder);
-                            setShowFolderModal(true);
-                          }}
-                          className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                        >
-                          <Settings className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteFolder(folder._id);
-                          }}
-                          className="p-1 text-gray-400 hover:text-red-600 rounded"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
-              ))}
-
-              {/* Standalone Forms */}
-              <Droppable droppableId="standalone-forms">
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className={`col-span-full grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 ${
-                      snapshot.isDraggingOver ? 'bg-blue-50 rounded-lg p-4 border-2 border-dashed border-blue-300' : ''
-                    }`}
-                  >
-                    {filteredStandaloneForms.map((form, index) => (
-                      <Draggable key={form._id} draggableId={`form-${form._id}`} index={index}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            className={`bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-all cursor-pointer group ${
-                              snapshot.isDragging ? 'shadow-lg rotate-2' : ''
-                            }`}
-                            onClick={() => onEditForm(form._id)}
-                          >
-                            <div className="flex flex-col items-center text-center">
-                              <div className="w-16 h-16 bg-blue-50 rounded-lg flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                                <FileText className="w-8 h-8 text-blue-600" />
-                              </div>
-                              <h3 className="font-medium text-gray-900 text-sm mb-2 truncate w-full">
-                                {form.title}
-                              </h3>
-                              <div className="flex items-center space-x-2 text-xs text-gray-500 mb-2">
-                                <span>{form.responses || 0} responses</span>
-                                <span>•</span>
-                                <span>{form.views || 0} views</span>
-                              </div>
-                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                form.status === 'published' ? 'bg-green-100 text-green-800' :
-                                form.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {form.status}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <div className="flex items-center space-x-1">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onViewResponses(form._id);
-                                  }}
-                                  className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                                  title="View responses"
-                                >
-                                  <BarChart3 className="w-4 h-4" />
-                                </button>
-                                {form.status === 'published' && form.shareUrl && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      copyShareLink(form.shareUrl!);
-                                    }}
-                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                                    title="Copy share link"
-                                  >
-                                    <Share2 className="w-4 h-4" />
-                                  </button>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <button
+                                onClick={() => toggleFolder(folder._id)}
+                                className="p-1 hover:bg-gray-200 rounded transition-colors"
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4 text-gray-600" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4 text-gray-600" />
+                                )}
+                              </button>
+                              <div 
+                                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                style={{ backgroundColor: folder.color + '20' }}
+                              >
+                                {isExpanded ? (
+                                  <FolderOpen className="w-5 h-5" style={{ color: folder.color }} />
+                                ) : (
+                                  <Folder className="w-5 h-5" style={{ color: folder.color }} />
                                 )}
                               </div>
+                              <div>
+                                <h3 className="font-medium text-gray-900">{folder.name}</h3>
+                                <p className="text-sm text-gray-500">
+                                  {folderForms.length} forms
+                                  {snapshot.isDraggingOver && (
+                                    <span className="text-blue-600 ml-2">• Drop here to add form</span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  deleteForm(form._id);
+                                  setSelectedFolder(folder);
+                                  setShowFolderModal(true);
                                 }}
-                                className="p-1 text-gray-400 hover:text-red-600 rounded"
-                                title="Delete form"
+                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                              >
+                                <Settings className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteFolder(folder._id);
+                                }}
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
+                          {provided.placeholder}
+                        </div>
+                      )}
+                    </Droppable>
+
+                    {/* Folder Contents */}
+                    {isExpanded && (
+                      <div className="p-4">
+                        {folderForms.length > 0 ? (
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {folderForms.map((form, index) => (
+                              <Draggable key={form._id} draggableId={`form-${form._id}`} index={index}>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                  >
+                                    {renderFormCard(form, index, snapshot.isDragging)}
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-gray-500">
+                            <Folder className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                            <p>No forms in this folder</p>
+                            <p className="text-sm">Drag forms here to organize them</p>
+                          </div>
                         )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
+                      </div>
+                    )}
                   </div>
-                )}
-              </Droppable>
+                );
+              })}
+
+              {/* Standalone Forms */}
+              {filteredStandaloneForms.length > 0 && (
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="p-4 bg-gray-50 border-b border-gray-100">
+                    <h3 className="font-medium text-gray-900">Standalone Forms</h3>
+                    <p className="text-sm text-gray-500">{filteredStandaloneForms.length} forms</p>
+                  </div>
+                  <div className="p-4">
+                    <Droppable droppableId="standalone-forms">
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.droppableProps}
+                          className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 ${
+                            snapshot.isDraggingOver ? 'bg-blue-50 rounded-lg p-4 border-2 border-dashed border-blue-300' : ''
+                          }`}
+                        >
+                          {filteredStandaloneForms.map((form, index) => (
+                            <Draggable key={form._id} draggableId={`form-${form._id}`} index={index}>
+                              {(provided, snapshot) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                >
+                                  {renderFormCard(form, index, snapshot.isDragging)}
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                        </div>
+                      )}
+                    </Droppable>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Empty State */}
