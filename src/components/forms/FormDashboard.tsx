@@ -1,40 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  MoreVertical, 
-  Eye, 
-  Edit, 
-  Trash2, 
-  Copy, 
-  Share2,
-  BarChart3,
-  Users,
-  Calendar,
-  FileText,
-  Download,
-  Send,
-  Folder,
-  FolderOpen,
-  FolderPlus,
-  Settings,
-  Menu,
-  Bot,
-  Image as ImageIcon,
-  Star,
-  User,
-  LogOut,
-  TrendingUp,
-  Activity,
-  ChevronDown,
-  ChevronRight,
-  X,
-  ArrowLeft,
-  Grid3X3,
-  List,
-  SortAsc
-} from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, Eye, Edit, Trash2, Copy, Share2, BarChart3, Users, Calendar, FileText, Download, Send, Folder, FolderOpen, FolderPlus, Settings, Menu, Bot, Image as ImageIcon, Star, User, LogOut, TrendingUp, Activity, ChevronDown, ChevronRight, X, ArrowLeft, Grid as Grid3X3, List, SortAsc } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { formAPI, exportAPI, folderAPI } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
