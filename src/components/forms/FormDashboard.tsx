@@ -21,13 +21,17 @@ import {
   Menu,
   Bot,
   Image as ImageIcon,
-  Star
+  Star,
+  User,
+  LogOut,
+  TrendingUp,
+  Activity
 } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { formAPI, exportAPI, folderAPI } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import FolderModal from './FolderModal';
 import toast from 'react-hot-toast';
-import blankFormImage from '../../asset/form.png';
-import bgImage from '../../asset/background.png';
 
 interface FormItem {
   _id: string;
@@ -61,6 +65,7 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
   onEditForm,
   onViewResponses 
 }) => {
+  const { user, logout, getInitials } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'draft' | 'closed'>('all');
   const [forms, setForms] = useState<FormItem[]>([]);
@@ -68,6 +73,7 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
   const [loading, setLoading] = useState(true);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<FolderItem | null>(null);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -99,7 +105,6 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
         setFolders(foldersResponse.value.data || []);
       } else {
         console.error('FormDashboard: Failed to load folders:', foldersResponse.reason);
-        // Don't show error for folders as they're optional
         setFolders([]);
       }
 
@@ -177,6 +182,79 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     toast.success('Share link copied to clipboard!');
   };
 
+  const handleDragEnd = async (result: any) => {
+    const { destination, source, draggableId } = result;
+
+    if (!destination) return;
+
+    // If dropped in the same place, do nothing
+    if (destination.droppableId === source.droppableId && destination.index === source.index) {
+      return;
+    }
+
+    // If dropped on a folder
+    if (destination.droppableId.startsWith('folder-')) {
+      const folderId = destination.droppableId.replace('folder-', '');
+      const formId = draggableId.replace('form-', '');
+
+      try {
+        // Move form to folder
+        await folderAPI.moveForms(folderId, [formId]);
+        
+        // Update local state
+        setForms(forms.map(form => 
+          form._id === formId ? { ...form, folderId } : form
+        ));
+        
+        // Update folder form count
+        setFolders(folders.map(folder => 
+          folder._id === folderId 
+            ? { ...folder, formCount: folder.formCount + 1 }
+            : folder
+        ));
+
+        toast.success('Form moved to folder successfully');
+      } catch (error: any) {
+        console.error('Error moving form to folder:', error);
+        toast.error('Failed to move form to folder');
+      }
+    }
+
+    // If dropped on standalone area
+    if (destination.droppableId === 'standalone-forms') {
+      const formId = draggableId.replace('form-', '');
+      const form = forms.find(f => f._id === formId);
+      
+      if (form && form.folderId) {
+        try {
+          // Remove form from folder (set folderId to null)
+          await formAPI.updateForm(formId, { ...form, folderId: null });
+          
+          // Update local state
+          setForms(forms.map(f => 
+            f._id === formId ? { ...f, folderId: undefined } : f
+          ));
+
+          // Update folder form count
+          setFolders(folders.map(folder => 
+            folder._id === form.folderId 
+              ? { ...folder, formCount: Math.max(0, folder.formCount - 1) }
+              : folder
+          ));
+
+          toast.success('Form moved to standalone area');
+        } catch (error: any) {
+          console.error('Error moving form to standalone:', error);
+          toast.error('Failed to move form');
+        }
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+  };
+
   const standaloneForms = forms.filter(form => !form.folderId);
   const filteredStandaloneForms = standaloneForms.filter(form => {
     const matchesSearch = form.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -206,326 +284,418 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-cover bg-center"
->
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-6 py-6">
-          <div className="flex items-center justify-center">
-          
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search forms and folders..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-3xl focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:min-w-md md:min-w-[400px] lg:min-w-[500px] bg-gray-50"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-<div className="px-6 py-8 bg-gray-100">
-        {/* Create Form Options */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Create New Form</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl">
-            {/* Blank Form */}
-            <div 
-              onClick={onCreateForm}
-              className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex items-start space-x-4">
-                <div className="w-20 h-24 bg-gray-100 rounded-lg border-2 border-gray-200 flex items-center justify-center group-hover:border-blue-500 transition-colors relative">
-                  <div className="absolute top-2 left-2 w-2 h-2 bg-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <img src={blankFormImage} alt="Blank Form" className="w-50 h-50 text-gray-400 group-hover:text-blue-500" />
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 shadow-sm">
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              {/* Logo */}
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <FileText className="w-6 h-6 text-white" />
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Blank Form</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    Start with a blank form and add your own questions
-                  </p>
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900">Forms</h1>
                 </div>
               </div>
-            </div>
 
-            {/* Create by AI */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-all cursor-pointer group">
-              <div className="flex items-start space-x-4">
-                <div className="w-20 h-24 bg-purple-50 rounded-lg border-2 border-purple-200 flex items-center justify-center group-hover:border-purple-500 transition-colors relative">
-                  <div className="absolute top-2 left-2 w-2 h-2 bg-purple-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <Bot className="w-10 h-10 text-purple-400 group-hover:text-purple-500" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Create by AI</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    Let AI help you create a form based on your description
-                  </p>
+              {/* Search Bar - Centered */}
+              <div className="flex-1 max-w-2xl mx-8">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search forms and folders..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                  />
                 </div>
               </div>
-            </div>
 
-            {/* Use Template */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-all cursor-pointer group">
-              <div className="flex items-start space-x-4">
-                <div className="w-20 h-24 bg-green-50 rounded-lg border-2 border-green-200 flex items-center justify-center group-hover:border-green-500 transition-colors relative">
-                  <div className="absolute top-2 left-2 w-2 h-2 bg-green-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <ImageIcon className="w-10 h-10 text-green-400 group-hover:text-green-500" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Use Template</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    Choose from pre-built templates for common use cases
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        </div>
-
-      <div className='px-6 py-8 ' >
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <FileText className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Total Forms</p>
-                <p className="text-2xl font-semibold text-gray-900">{forms.length}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Total Responses</p>
-                <p className="text-2xl font-semibold text-gray-900">{totalResponses}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <Eye className="w-6 h-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Total Views</p>
-                <p className="text-2xl font-semibold text-gray-900">{totalViews}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                <Send className="w-6 h-6 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Published Forms</p>
-                <p className="text-2xl font-semibold text-gray-900">{activeForms}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Your Forms Section */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-medium text-gray-900">Your Forms</h2>
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => {
-                  setSelectedFolder(null);
-                  setShowFolderModal(true);
-                }}
-                className="inline-flex items-center px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                <FolderPlus className="w-4 h-4 mr-2" />
-                New Folder
-              </button>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              >
-                <option value="all">All Status</option>
-                <option value="published">Published</option>
-                <option value="draft">Draft</option>
-                <option value="closed">Closed</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Forms Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-            {/* Folders */}
-            {filteredFolders.map((folder) => (
-              <div
-                key={folder._id}
-                className="p-4 hover:shadow-md transition-all cursor-pointer group"
-              >
-                <div className="flex flex-col items-center text-center">
-                  <div 
-                    className="w-16 h-16 rounded-lg flex items-center justify-center mb-3 group-hover:scale-105 transition-transform"
-                    style={{ backgroundColor: folder.color + '20' }}
-                  >
-                    <Folder 
-                      className="w-8 h-8" 
-                      style={{ color: folder.color }}
-                    />
-                  </div>
-                  <h3 className="font-medium text-gray-900 text-sm mb-1 truncate w-full">
-                    {folder.name}
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    {folder.formCount} forms
-                  </p>
-                </div>
-                <div className="flex items-center justify-end mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedFolder(folder);
-                      setShowFolderModal(true);
-                    }}
-                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                  >
-                    <Settings className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteFolder(folder._id);
-                    }}
-                    className="p-1 text-gray-400 hover:text-red-600 rounded"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {/* Standalone Forms */}
-            {filteredStandaloneForms.map((form) => (
-              <div
-                key={form._id}
-                className=" p-4 hover:shadow-md transition-all cursor-pointer group"
-                onClick={() => onEditForm(form._id)}
-              >
-                <div className="flex flex-col items-center text-center">
-                  <div className="w-16 h-16 bg-blue-50 rounded-lg flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                    <FileText className="w-8 h-8 text-blue-600" />
-                  </div>
-                  <h3 className="font-medium text-gray-900 text-sm mb-2 truncate w-full">
-                    {form.title}
-                  </h3>
-                  <div className="flex items-center space-x-2 text-xs text-gray-500 mb-2">
-                    <span>{form.responses || 0} responses</span>
-                    <span>•</span>
-                    <span>{form.views || 0} views</span>
-                  </div>
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    form.status === 'published' ? 'bg-green-100 text-green-800' :
-                    form.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {form.status}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onViewResponses(form._id);
-                      }}
-                      className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                      title="View responses"
-                    >
-                      <BarChart3 className="w-4 h-4" />
-                    </button>
-                    {form.status === 'published' && form.shareUrl && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          copyShareLink(form.shareUrl!);
-                        }}
-                        className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                        title="Copy share link"
-                      >
-                        <Share2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteForm(form._id);
-                    }}
-                    className="p-1 text-gray-400 hover:text-red-600 rounded"
-                    title="Delete form"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Empty State */}
-          {filteredFolders.length === 0 && filteredStandaloneForms.length === 0 && (
-            <div className="text-center py-16">
-              <FileText className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {forms.length === 0 ? 'No forms created yet' : 'No forms or folders found'}
-              </h3>
-              <p className="text-gray-600 mb-6">
-                {searchTerm || filterStatus !== 'all' 
-                  ? 'Try adjusting your search or filter criteria'
-                  : 'Get started by creating your first form'
-                }
-              </p>
-              {!searchTerm && filterStatus === 'all' && forms.length === 0 && (
+              {/* Profile Dropdown */}
+              <div className="relative">
                 <button
-                  onClick={onCreateForm}
-                  className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                  className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 >
-                  <Plus className="w-5 h-5 mr-2" />
-                  Create Your First Form
+                  {user?.avatar ? (
+                    <img 
+                      src={user.avatar} 
+                      alt={user.name}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium">
+                      {getInitials()}
+                    </div>
+                  )}
+                  <div className="hidden md:block text-left">
+                    <p className="text-sm font-medium text-gray-900">{user?.name}</p>
+                    <p className="text-xs text-gray-500">{user?.email}</p>
+                  </div>
                 </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Folder Modal */}
-      <FolderModal
-        isOpen={showFolderModal}
-        onClose={() => {
-          setShowFolderModal(false);
-          setSelectedFolder(null);
-        }}
-        onSubmit={selectedFolder ? updateFolder : createFolder}
-        title={selectedFolder ? 'Edit Folder' : 'Create New Folder'}
-        initialData={selectedFolder ? {
-          name: selectedFolder.name,
-          description: selectedFolder.description,
-          color: selectedFolder.color
-        } : undefined}
-      />
-    </div>
+                {showProfileDropdown && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                    {/* Profile Header */}
+                    <div className="px-4 py-3 border-b border-gray-100">
+                      <div className="flex items-center space-x-3">
+                        {user?.avatar ? (
+                          <img 
+                            src={user.avatar} 
+                            alt={user.name}
+                            className="w-12 h-12 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-medium text-lg">
+                            {getInitials()}
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-900">{user?.name}</p>
+                          <p className="text-sm text-gray-500">{user?.email}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stats Section */}
+                    <div className="px-4 py-3 border-b border-gray-100">
+                      <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Quick Stats</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="text-center">
+                          <div className="text-lg font-semibold text-gray-900">{forms.length}</div>
+                          <div className="text-xs text-gray-500">Total Forms</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-lg font-semibold text-gray-900">{totalResponses}</div>
+                          <div className="text-xs text-gray-500">Responses</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-lg font-semibold text-gray-900">{totalViews}</div>
+                          <div className="text-xs text-gray-500">Views</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-lg font-semibold text-gray-900">{activeForms}</div>
+                          <div className="text-xs text-gray-500">Published</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Menu Items */}
+                    <div className="py-2">
+                      <button className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors">
+                        <User className="w-4 h-4" />
+                        <span>Profile</span>
+                      </button>
+                      <button className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors">
+                        <BarChart3 className="w-4 h-4" />
+                        <span>Analytics</span>
+                      </button>
+                      <button className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors">
+                        <Settings className="w-4 h-4" />
+                        <span>Settings</span>
+                      </button>
+                      <div className="border-t border-gray-100 my-2"></div>
+                      <button 
+                        onClick={handleLogout}
+                        className="w-full flex items-center space-x-3 px-4 py-2 text-left text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-8">
+          {/* Create Form Options */}
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Create New Form</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl">
+              {/* Blank Form */}
+              <div 
+                onClick={onCreateForm}
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-all cursor-pointer group"
+              >
+                <div className="flex items-start space-x-4">
+                  <div className="w-20 h-24 bg-gray-100 rounded-lg border-2 border-gray-200 flex items-center justify-center group-hover:border-blue-500 transition-colors relative">
+                    <div className="absolute top-2 left-2 w-2 h-2 bg-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <FileText className="w-10 h-10 text-gray-400 group-hover:text-blue-500" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Blank Form</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Start with a blank form and add your own questions
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Create by AI */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-all cursor-pointer group">
+                <div className="flex items-start space-x-4">
+                  <div className="w-20 h-24 bg-purple-50 rounded-lg border-2 border-purple-200 flex items-center justify-center group-hover:border-purple-500 transition-colors relative">
+                    <div className="absolute top-2 left-2 w-2 h-2 bg-purple-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <Bot className="w-10 h-10 text-purple-400 group-hover:text-purple-500" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Create by AI</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Let AI help you create a form based on your description
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Use Template */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-all cursor-pointer group">
+                <div className="flex items-start space-x-4">
+                  <div className="w-20 h-24 bg-green-50 rounded-lg border-2 border-green-200 flex items-center justify-center group-hover:border-green-500 transition-colors relative">
+                    <div className="absolute top-2 left-2 w-2 h-2 bg-green-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <ImageIcon className="w-10 h-10 text-green-400 group-hover:text-green-500" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Use Template</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Choose from pre-built templates for common use cases
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Your Forms Section */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-medium text-gray-900">Your Forms</h2>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => {
+                    setSelectedFolder(null);
+                    setShowFolderModal(true);
+                  }}
+                  className="inline-flex items-center px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <FolderPlus className="w-4 h-4 mr-2" />
+                  New Folder
+                </button>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                >
+                  <option value="all">All Status</option>
+                  <option value="published">Published</option>
+                  <option value="draft">Draft</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Forms Grid with Drag and Drop */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {/* Folders */}
+              {filteredFolders.map((folder) => (
+                <Droppable key={folder._id} droppableId={`folder-${folder._id}`}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`bg-white rounded-lg border-2 p-4 hover:shadow-md transition-all cursor-pointer group ${
+                        snapshot.isDraggingOver ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center text-center">
+                        <div 
+                          className="w-16 h-16 rounded-lg flex items-center justify-center mb-3 group-hover:scale-105 transition-transform"
+                          style={{ backgroundColor: folder.color + '20' }}
+                        >
+                          <Folder 
+                            className="w-8 h-8" 
+                            style={{ color: folder.color }}
+                          />
+                        </div>
+                        <h3 className="font-medium text-gray-900 text-sm mb-1 truncate w-full">
+                          {folder.name}
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          {folder.formCount} forms
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-end mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFolder(folder);
+                            setShowFolderModal(true);
+                          }}
+                          className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                        >
+                          <Settings className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteFolder(folder._id);
+                          }}
+                          className="p-1 text-gray-400 hover:text-red-600 rounded"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              ))}
+
+              {/* Standalone Forms */}
+              <Droppable droppableId="standalone-forms">
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className={`col-span-full grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 ${
+                      snapshot.isDraggingOver ? 'bg-blue-50 rounded-lg p-4 border-2 border-dashed border-blue-300' : ''
+                    }`}
+                  >
+                    {filteredStandaloneForms.map((form, index) => (
+                      <Draggable key={form._id} draggableId={`form-${form._id}`} index={index}>
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            className={`bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-all cursor-pointer group ${
+                              snapshot.isDragging ? 'shadow-lg rotate-2' : ''
+                            }`}
+                            onClick={() => onEditForm(form._id)}
+                          >
+                            <div className="flex flex-col items-center text-center">
+                              <div className="w-16 h-16 bg-blue-50 rounded-lg flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                                <FileText className="w-8 h-8 text-blue-600" />
+                              </div>
+                              <h3 className="font-medium text-gray-900 text-sm mb-2 truncate w-full">
+                                {form.title}
+                              </h3>
+                              <div className="flex items-center space-x-2 text-xs text-gray-500 mb-2">
+                                <span>{form.responses || 0} responses</span>
+                                <span>•</span>
+                                <span>{form.views || 0} views</span>
+                              </div>
+                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                form.status === 'published' ? 'bg-green-100 text-green-800' :
+                                form.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {form.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="flex items-center space-x-1">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onViewResponses(form._id);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                  title="View responses"
+                                >
+                                  <BarChart3 className="w-4 h-4" />
+                                </button>
+                                {form.status === 'published' && form.shareUrl && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyShareLink(form.shareUrl!);
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                    title="Copy share link"
+                                  >
+                                    <Share2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteForm(form._id);
+                                }}
+                                className="p-1 text-gray-400 hover:text-red-600 rounded"
+                                title="Delete form"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            </div>
+
+            {/* Empty State */}
+            {filteredFolders.length === 0 && filteredStandaloneForms.length === 0 && (
+              <div className="text-center py-16">
+                <FileText className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  {forms.length === 0 ? 'No forms created yet' : 'No forms or folders found'}
+                </h3>
+                <p className="text-gray-600 mb-6">
+                  {searchTerm || filterStatus !== 'all' 
+                    ? 'Try adjusting your search or filter criteria'
+                    : 'Get started by creating your first form'
+                  }
+                </p>
+                {!searchTerm && filterStatus === 'all' && forms.length === 0 && (
+                  <button
+                    onClick={onCreateForm}
+                    className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="w-5 h-5 mr-2" />
+                    Create Your First Form
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Click outside to close dropdown */}
+        {showProfileDropdown && (
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => setShowProfileDropdown(false)}
+          />
+        )}
+
+        {/* Folder Modal */}
+        <FolderModal
+          isOpen={showFolderModal}
+          onClose={() => {
+            setShowFolderModal(false);
+            setSelectedFolder(null);
+          }}
+          onSubmit={selectedFolder ? updateFolder : createFolder}
+          title={selectedFolder ? 'Edit Folder' : 'Create New Folder'}
+          initialData={selectedFolder ? {
+            name: selectedFolder.name,
+            description: selectedFolder.description,
+            color: selectedFolder.color
+          } : undefined}
+        />
+      </div>
+    </DragDropContext>
   );
 };
 
