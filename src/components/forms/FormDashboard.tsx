@@ -26,6 +26,8 @@ import {
 import { formAPI, exportAPI, folderAPI } from '../../services/api';
 import FolderModal from './FolderModal';
 import toast from 'react-hot-toast';
+import blankFormImage from '../../asset/form.png';
+import bgImage from '../../asset/background.png';
 
 interface FormItem {
   _id: string;
@@ -204,15 +206,13 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-cover bg-center"
+>
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-600">Manage your forms and view analytics</p>
-            </div>
+          <div className="flex items-center justify-center">
+          
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -220,14 +220,14 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
                 placeholder="Search forms and folders..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:min-w-md md:min-w-[400px] lg:min-w-[500px] bg-gray-50"
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-3xl focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:min-w-md md:min-w-[400px] lg:min-w-[500px] bg-gray-50"
               />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="px-6 py-8">
+<div className="px-6 py-8 bg-gray-100">
         {/* Create Form Options */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Create New Form</h2>
@@ -240,7 +240,7 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
               <div className="flex items-start space-x-4">
                 <div className="w-20 h-24 bg-gray-100 rounded-lg border-2 border-gray-200 flex items-center justify-center group-hover:border-blue-500 transition-colors relative">
                   <div className="absolute top-2 left-2 w-2 h-2 bg-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <FileText className="w-10 h-10 text-gray-400 group-hover:text-blue-500" />
+                <img src={blankFormImage} alt="Blank Form" className="w-50 h-50 text-gray-400 group-hover:text-blue-500" />
                 </div>
                 <div className="flex-1">
                   <h3 className="text-lg font-medium text-gray-900 mb-2">Blank Form</h3>
@@ -285,6 +285,9 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
           </div>
         </div>
 
+        </div>
+
+      <div className='px-6 py-8 ' >
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -370,7 +373,7 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
             {filteredFolders.map((folder) => (
               <div
                 key={folder._id}
-                className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-all cursor-pointer group"
+                className="p-4 hover:shadow-md transition-all cursor-pointer group"
               >
                 <div className="flex flex-col items-center text-center">
                   <div 
@@ -417,7 +420,7 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
             {filteredStandaloneForms.map((form) => (
               <div
                 key={form._id}
-                className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-all cursor-pointer group"
+                className=" p-4 hover:shadow-md transition-all cursor-pointer group"
                 onClick={() => onEditForm(form._id)}
               >
                 <div className="flex flex-col items-center text-center">
