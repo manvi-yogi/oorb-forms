@@ -553,21 +553,27 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ formId, onBack }) => {
                                 onClick={() => setSelectedField(field.id)}
                               >
                                 <div className="flex items-center justify-between mb-3">
-                                  <div {...provided.dragHandleProps} className="cursor-move">
+                                  <div {...provided.dragHandleProps} className="cursor-move p-1 hover:bg-gray-100 rounded">
                                     <div className="flex space-x-1">
-                                      <div className="w-1 h-4 bg-gray-300 rounded"></div>
-                                      <div className="w-1 h-4 bg-gray-300 rounded"></div>
+                                      <div className="w-1 h-4 bg-gray-400 rounded"></div>
+                                      <div className="w-1 h-4 bg-gray-400 rounded"></div>
+                                      <div className="w-1 h-4 bg-gray-400 rounded"></div>
                                     </div>
                                   </div>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                      {field.type}
+                                    </span>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedField(field.id);
                                     }}
-                                    className="p-1 text-gray-400 hover:text-gray-600"
+                                      className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
                                   >
                                     <Settings className="w-4 h-4" />
                                   </button>
+                                  </div>
                                 </div>
                                 
                                 <div>
@@ -577,6 +583,13 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ formId, onBack }) => {
                                   </label>
                                   {renderFieldPreview(field)}
                                 </div>
+                                
+                                {/* Drag indicator */}
+                                {snapshot.isDragging && (
+                                  <div className="absolute inset-0 bg-blue-100 border-2 border-dashed border-blue-300 rounded-lg flex items-center justify-center">
+                                    <span className="text-blue-600 font-medium">Moving field...</span>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </Draggable>
