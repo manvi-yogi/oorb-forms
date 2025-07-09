@@ -17,7 +17,8 @@ import {
   Save,
   Share2,
   ArrowLeft,
-  Send
+  Send,
+  BarChart3
 } from 'lucide-react';
 import { formAPI } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -43,9 +44,10 @@ interface Form {
 interface FormBuilderProps {
   formId?: string;
   onBack: () => void;
+  onViewResponses?: (formId: string) => void;
 }
 
-const FormBuilder: React.FC<FormBuilderProps> = ({ formId, onBack }) => {
+const FormBuilder: React.FC<FormBuilderProps> = ({ formId, onBack, onViewResponses }) => {
   const [form, setForm] = useState<Form>({
     title: 'Untitled Form',
     description: 'Form description',
@@ -509,6 +511,24 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ formId, onBack }) => {
                 >
                   <Share2 className="w-4 h-4" />
                   <span>Share</span>
+                </button>
+              )}
+              {form._id && onViewResponses && (
+                <button
+                  onClick={() => onViewResponses(form._id!)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span>View Responses</span>
+                </button>
+              )}
+              {form._id && (
+                <button
+                  onClick={() => window.open(`/oorb-forms/responses/${form._id}`, '_blank')}
+                  className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span>View Responses</span>
                 </button>
               )}
             </div>

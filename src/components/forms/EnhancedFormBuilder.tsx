@@ -63,9 +63,10 @@ interface Form {
 interface EnhancedFormBuilderProps {
   formId?: string;
   onBack: () => void;
+  onViewResponses?: (formId: string) => void;
 }
 
-const EnhancedFormBuilder: React.FC<EnhancedFormBuilderProps> = ({ formId, onBack }) => {
+const EnhancedFormBuilder: React.FC<EnhancedFormBuilderProps> = ({ formId, onBack, onViewResponses }) => {
   const [form, setForm] = useState<Form>({
     title: 'Untitled Form',
     description: 'Form description',
@@ -562,6 +563,15 @@ const EnhancedFormBuilder: React.FC<EnhancedFormBuilderProps> = ({ formId, onBac
                 Submit
               </button>
             </form>
+            {form._id && onViewResponses && (
+              <button
+                onClick={() => onViewResponses(form._id!)}
+                className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>View Responses</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

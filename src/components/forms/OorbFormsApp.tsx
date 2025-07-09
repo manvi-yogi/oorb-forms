@@ -79,6 +79,7 @@ const OorbFormsApp: React.FC = () => {
           <EnhancedFormBuilder 
             formId={currentFormId || undefined}
             onBack={handleBackToDashboard}
+            onViewResponses={handleViewResponses}
           />
         );
       
