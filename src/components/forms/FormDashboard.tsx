@@ -51,9 +51,19 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    show: boolean;
+    x: number;
+    y: number;
+    item: FormItem | null;
+  }>({ show: false, x: 0, y: 0, item: null });
 
   useEffect(() => {
     loadData();
+    // Close context menu on click outside
+    const handleClickOutside = () => setContextMenu({ show: false, x: 0, y: 0, item: null });
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   const loadData = async () => {
@@ -159,6 +169,35 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     toast.success('Share link copied to clipboard!');
   };
 
+  const duplicateForm = async (form: FormItem) => {
+    try {
+      const duplicatedForm = {
+        ...form,
+        title: `${form.title} (Copy)`,
+        status: 'draft' as const
+      };
+      delete (duplicatedForm as any)._id;
+      delete (duplicatedForm as any).shareUrl;
+      
+      const response = await formAPI.createForm(duplicatedForm);
+      setForms([response.data, ...forms]);
+      toast.success('Form duplicated successfully');
+    } catch (error: any) {
+      console.error('Error duplicating form:', error);
+      toast.error('Failed to duplicate form');
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, item: FormItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      show: true,
+      x: e.clientX,
+      y: e.clientY,
+      item
+    });
+  };
   const handleItemClick = (itemId: string, itemType: 'form' | 'folder') => {
     if (itemType === 'folder') {
       const folder = folders.find(f => f._id === itemId);
@@ -296,6 +335,7 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
         } ${selectedItems.has(item._id) ? 'border-blue-500 bg-blue-50' : ''}`}
         onClick={() => handleItemClick(item._id, type)}
         onDoubleClick={() => handleItemDoubleClick(item._id, type)}
+        onContextMenu={!isFolder ? (e) => handleContextMenu(e, item as FormItem) : undefined}
       >
         <div className="flex flex-col items-center text-center space-y-2">
           {/* Icon */}
@@ -357,6 +397,109 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
     );
   };
 
+  const renderContextMenu = () => {
+    if (!contextMenu.show || !contextMenu.item) return null;
+
+    const form = contextMenu.item;
+
+    return (
+      <div
+        className="fixed bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 min-w-48"
+        style={{
+          left: contextMenu.x,
+          top: contextMenu.y,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={() => {
+            onEditForm(form._id);
+            setContextMenu({ show: false, x: 0, y: 0, item: null });
+          }}
+          className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+        >
+          <Edit className="w-4 h-4" />
+          <span>Edit Form</span>
+        </button>
+
+        <button
+          onClick={() => {
+            onViewResponses(form._id);
+            setContextMenu({ show: false, x: 0, y: 0, item: null });
+          }}
+          className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span>View Responses</span>
+        </button>
+
+        {form.status === 'published' && form.shareUrl && (
+          <button
+            onClick={() => {
+              copyShareLink(form.shareUrl!);
+              setContextMenu({ show: false, x: 0, y: 0, item: null });
+            }}
+            className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+          >
+            <Share2 className="w-4 h-4" />
+            <span>Copy Share Link</span>
+          </button>
+        )}
+
+        <button
+          onClick={() => {
+            duplicateForm(form);
+            setContextMenu({ show: false, x: 0, y: 0, item: null });
+          }}
+          className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+        >
+          <Copy className="w-4 h-4" />
+          <span>Duplicate</span>
+        </button>
+
+        {form.status === 'published' && (
+          <>
+            <button
+              onClick={() => {
+                exportAPI.downloadExcel(form._id);
+                toast.success('Excel download started');
+                setContextMenu({ show: false, x: 0, y: 0, item: null });
+              }}
+              className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export Excel</span>
+            </button>
+
+            <button
+              onClick={() => {
+                exportAPI.downloadCSV(form._id);
+                toast.success('CSV download started');
+                setContextMenu({ show: false, x: 0, y: 0, item: null });
+              }}
+              className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export CSV</span>
+            </button>
+          </>
+        )}
+
+        <div className="border-t border-gray-100 my-2"></div>
+
+        <button
+          onClick={() => {
+            deleteForm(form._id);
+            setContextMenu({ show: false, x: 0, y: 0, item: null });
+          }}
+          className="w-full flex items-center space-x-3 px-4 py-2 text-left text-red-600 hover:bg-red-50 transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>Delete</span>
+        </button>
+      </div>
+    );
+  };
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -682,6 +825,8 @@ const FormDashboard: React.FC<FormDashboardProps> = ({
           />
         )}
 
+        {/* Context Menu */}
+        {renderContextMenu()}
         {/* Folder Modal */}
         <FolderModal
           isOpen={showFolderModal}
